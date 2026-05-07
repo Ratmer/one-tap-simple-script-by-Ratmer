@@ -1,0 +1,109 @@
+-- Heisenberg's Private Collection (One Tap Edition) + Ratmer Mod
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+
+local Settings = {
+    -- Основное
+    AimEnabled = true,
+    AimPart = "Head",
+    Radius = 250,
+    Smoothness = 0.5,
+    WallCheck = true,
+    EspEnabled = true,
+    
+    -- Новые фишки
+    AntiAim = true,        -- Разворот спиной
+    ThirdPerson = true,    -- Вид от 3-го лица
+    TP_Offset = Vector3.new(3, 2, 10), -- Смещение камеры (Вбок, Вверх, Назад)
+    CustomFOV = 100        -- Угол обзора
+}
+
+-- [AIMBOT LOGIC]
+local function IsVisible(targetPart)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {LocalPlayer.Character, targetPart.Parent}
+    local result = workspace:Raycast(Camera.CFrame.Position, targetPart.Position - Camera.CFrame.Position, params)
+    return result == nil
+end
+
+local function GetClosestTarget()
+    local target, maxDist = nil, Settings.Radius
+    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local part = player.Character:FindFirstChild(Settings.AimPart)
+            local hum = player.Character:FindFirstChildOfClass("Humanoid")
+            if part and hum and hum.Health > 0 then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                local dist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+                if onScreen and dist < maxDist and (not Settings.WallCheck or IsVisible(part)) then
+                    target, maxDist = part, dist
+                end
+            end
+        end
+    end
+    return target
+end
+
+-- [ESP LOGIC]
+local function CreateESP(player)
+    local Box = Drawing.new("Square")
+    Box.Visible = false
+    Box.Color = Color3.fromRGB(0, 255, 255)
+    Box.Thickness = 1
+    
+    RunService.RenderStepped:Connect(function()
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+            local RootPart = player.Character.HumanoidRootPart
+            local Pos, OnScreen = Camera:WorldToViewportPoint(RootPart.Position)
+            if OnScreen and Settings.EspEnabled then
+                local Size = (Camera:WorldToViewportPoint(RootPart.Position - Vector3.new(0, 3, 0)).Y - Camera:WorldToViewportPoint(RootPart.Position + Vector3.new(0, 2.6, 0)).Y)
+                Box.Size = Vector2.new(Size * 1.5, Size)
+                Box.Position = Vector2.new(Pos.X - Box.Size.X / 2, Pos.Y - Box.Size.Y / 2)
+                Box.Visible = true
+            else Box.Visible = false end
+        else Box.Visible = false end
+    end)
+end
+
+for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then CreateESP(p) end end
+Players.PlayerAdded:Connect(CreateESP)
+
+-- [MAIN LOOP]
+RunService.RenderStepped:Connect(function()
+    local Character = LocalPlayer.Character
+    local Root = Character and Character:FindFirstChild("HumanoidRootPart")
+    local Hum = Character and Character:FindFirstChild("Humanoid")
+    local Target = GetClosestTarget()
+
+    -- 1. Aimbot Logic
+    if Settings.AimEnabled and Target then
+        Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, Target.Position), Settings.Smoothness)
+    end
+
+-- 2. Anti-Aim Logic (Спиной к цели или камере)
+    if Settings.AntiAim and Root and Hum then
+        Hum.AutoRotate = false -- Отключаем стандартный поворот
+        local lookAtPos = Target and Target.Position or (Camera.CFrame.Position + Camera.CFrame.LookVector * 100)
+        local direction = (lookAtPos - Root.Position).Unit
+        -- Разворачиваем на 180 градусов от направления взгляда
+        Root.CFrame = CFrame.lookAt(Root.Position, Root.Position - Vector3.new(direction.X, 0, direction.Z))
+    elseif Hum then
+        Hum.AutoRotate = true
+    end
+
+    -- 3. Third Person & FOV
+    if Settings.ThirdPerson then
+        Camera.FieldOfView = Settings.CustomFOV
+        -- Если хочешь кастомное смещение камеры, раскомментируй строку ниже:
+        -- Camera.CFrame = Camera.CFrame * CFrame.new(Settings.TP_Offset.X, Settings.TP_Offset.Y, Settings.TP_Offset.Z)
+    end
+end)
+
+print("Product is 99.1% pure. Ratmer Edition Loaded.")
